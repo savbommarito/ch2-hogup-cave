@@ -1,0 +1,356 @@
+---
+title: "Dissimilarity Analysis - Hogup Cave & Crescent Springs"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+Establish occupation periods defined by Martin et al. 2017
+```{r setup, include=FALSE}
+############################################################
+# WORKFLOW FOR HOGUP–WETLAND DISSIMILARITY ANALYSIS
+# Using Martin et al. (2017) phases, ordered Monte Carlo ages,
+# and two analyses for the Stratum 9 residual sample.
+############################################################
+library(analogue)
+library(magrittr)
+```
+
+```{r occphases}
+## STEP 1.1: Define Martin et al. (2017) Phase boundaries ----
+## These are the phase windows you will use for pollen ages. [file:2]
+
+phase_bounds <- list(
+  I  = c(start = 9790, end = 6490),  # Strata 1–7
+  II = c(start = 5840, end = 3330),  # Stratum 8
+  III= c(start = 2870, end = 2760),  # Strata 9–10
+  IV = c(start = 2610, end =  360)   # Strata 11–16
+)
+```
+
+```{r maptooccphases}
+## STEP 1.2: Map each cave pollen sample (row) to a Phase ----
+## USER: create a data frame 'hogup_meta' with at least:
+##   - sample_id: unique label
+##   - stratum: integer 1–16
+##   - depth or order index within stratum (if available)
+
+# Example structure (replace with your real metadata)
+# hogup_meta <- data.frame(
+#   sample_id = rownames(cave_pollen),
+#   stratum   = c(...),    # numeric codes 1–16
+#   depth_cm  = c(...)     # optional, for ordering within stratum
+# )
+hogup_meta <- read.csv("hogup_pollen.csv", check.names = TRUE)
+
+# Function to map stratum to phase label
+stratum_to_phase <- function(stratum) {
+  if (stratum >= 1  & stratum <= 7)  return("I")
+  if (stratum == 8)                  return("II")
+  if (stratum == 9 | stratum == 10)  return("III")
+  if (stratum >= 11 & stratum <= 16) return("IV")
+  return(NA_character_)
+}
+
+hogup_meta$phase <- vapply(hogup_meta$stratum, stratum_to_phase, character(1))
+```
+
+```{r confirmmapping}
+## STEP 1.3: Confirm mapping from phases to age windows ----
+## phase_bounds already holds the windows; here we just attach
+## them to each sample in 'hogup_meta' for convenience.
+
+hogup_meta$phase_start <- phase_bounds[hogup_meta$phase] %>% sapply(`[`, "start")
+hogup_meta$phase_end   <- phase_bounds[hogup_meta$phase] %>% sapply(`[`, "end")
+```
+
+```{r timestep}
+## STEP 1.4: Choose a global time step for interpolation ----
+
+time_step <- 250   # time step in years; adjust if needed
+```
+
+Ordered Monte Carlo age assignments for Hogup Cave samples
+```{r ordersamples}
+## STEP 2.1: Order samples within each phase by stratigraphy ----
+## We assume lower stratum number = older; within stratum,
+## use depth_cm or some order index if available.
+
+# First ensure cave_pollen rows match hogup_meta$sample_id
+# cave_pollen: matrix/data.frame of Hogup pollen (%), rows = samples.
+# rownames(cave_pollen) <- hogup_meta$sample_id   # enforce alignment
+
+# Create an order index per phase: sort by (stratum, depth) within phase
+hogup_meta <- hogup_meta[order(hogup_meta$phase,
+                               hogup_meta$stratum), ]
+
+# Reorder cave_pollen to match this sorted metadata
+cave_pollen <- cave_pollen[hogup_meta$sample_id, ]
+
+```
+
+```{r countsamples}
+## STEP 2.2: Count samples per phase ----
+
+samples_per_phase <- table(hogup_meta$phase)
+samples_per_phase
+```
+
+```{r generateages}
+## STEP 2.3: Function to generate one set of ordered ages for all samples ----
+
+generate_ordered_ages <- function(meta, phase_bounds) {
+  # meta: hogup_meta with columns phase, phase_start, phase_end
+  # Returns: numeric vector of ages aligned with rows of 'meta'
+  
+  ages <- numeric(nrow(meta))   # placeholder
+  
+  # Loop over phases
+  for (ph in names(phase_bounds)) {
+    idx <- which(meta$phase == ph)           # indices in this phase
+    if (length(idx) == 0) next               # skip if no samples
+    n   <- length(idx)                       # number of samples in phase
+    
+    # Draw and sort proportions across the whole phase
+    p   <- sort(runif(n, 0, 1))              # ordered U(0,1)
+
+    # Map to ages using phase start and end
+    start <- phase_bounds[[ph]]["start"]
+    end   <- phase_bounds[[ph]]["end"]
+    ages_phase <- start + p * (end - start)  # ordered ages within phase
+
+    # Shuffle ages within each stratum so within-stratum order is random,
+    # while between-stratum ordering (older stratum = older ages) is preserved
+    strata_in_phase <- meta$stratum[idx]
+    for (s in unique(strata_in_phase)) {
+      s_pos <- which(strata_in_phase == s)
+      ages_phase[s_pos] <- sample(ages_phase[s_pos])
+    }
+
+    # Assign to these rows (meta is sorted by stratum within phase)
+    ages[idx] <- ages_phase
+  }
+  
+  return(ages)
+}
+```
+
+```{r residualsamples}
+## STEP 2.4: Handle the Stratum 9 residual pollen sample ----
+## Assume hogup_meta has a logical flag 'is_residual' for that sample.
+
+# Example: mark the known residual sample
+# hogup_meta$is_residual <- FALSE
+# hogup_meta$is_residual[hogup_meta$sample_id == "your_residual_sample_id"] <- TRUE
+
+residual_age_range <- c(4478, 4873)  # calibrated mid-Holocene range (cal BP)
+
+# Variant 1: generate ages excluding the residual sample (Analysis A)
+generate_ordered_ages_excl_resid <- function(meta, phase_bounds) {
+  meta_no_resid <- meta[!meta$is_residual, ]
+  ages_no_resid <- generate_ordered_ages(meta_no_resid, phase_bounds)
+  ages <- rep(NA_real_, nrow(meta))
+  ages[!meta$is_residual] <- ages_no_resid
+  # residual sample intentionally has NA (excluded)
+  return(ages)
+}
+
+# Variant 2: generate ages including residual as mid-Holocene (Analysis B)
+generate_ordered_ages_incl_resid <- function(meta, phase_bounds, resid_range) {
+  meta_no_resid <- meta[!meta$is_residual, ]
+  ages_no_resid <- generate_ordered_ages(meta_no_resid, phase_bounds)
+  ages <- rep(NA_real_, nrow(meta))
+  ages[!meta$is_residual] <- ages_no_resid
+  
+  # assign residual sample a mid-Holocene age (either fixed or uniform)
+  resid_idx <- which(meta$is_residual)
+  if (length(resid_idx) == 1) {
+    ages[resid_idx] <- runif(1, resid_range[1], resid_range[2])
+  }
+  
+  return(ages)
+}
+```
+
+```{r montecarlo}
+## STEP 2.5: Generate many Monte Carlo realizations of ages ----
+
+n_real <- 200   # number of Monte Carlo realizations (adjust as needed)
+
+# Storage lists
+age_realizations_excl <- vector("list", n_real)
+age_realizations_incl <- vector("list", n_real)
+
+set.seed(123)   # reproducibility
+
+for (k in 1:n_real) {
+  age_realizations_excl[[k]] <- generate_ordered_ages_excl_resid(hogup_meta, phase_bounds)
+  age_realizations_incl[[k]] <- generate_ordered_ages_incl_resid(hogup_meta, phase_bounds,
+                                                                 resid_range = residual_age_range)
+}
+```
+
+```{r blahblah}
+## STEP 2.6: Age vectors now align with rows of cave_pollen ----
+## For realization k, cave ages (excluding residual) = age_realizations_excl[[k]]
+## For realization k, cave ages (including residual) = age_realizations_incl[[k]]
+```
+
+Dissimilarity Analysis w Crescent Springs Core
+```{r loadwetdata}
+## STEP 3.0: Load Crescent Springs wetland pollen data ----
+
+crescent_raw <- read.csv("crescent_pollen.csv", check.names = TRUE)
+
+wet_age <- crescent_raw$Age  # cal yr BP
+
+meta_cols  <- c("Depth", "Age", "Pollen Sum", "Terrestrial", "Lyco")
+wet_pollen <- crescent_raw[, !colnames(crescent_raw) %in% meta_cols, drop = FALSE]
+rownames(wet_pollen) <- crescent_raw$Depth
+```
+
+```{r prepcsdata}
+## STEP 3.1: Prepare wetland core and harmonize taxa ----
+
+# Convert to proportions
+wet_prop  <- as.data.frame(wet_pollen / 100)
+cave_prop <- as.data.frame(cave_pollen / 100)
+
+# Harmonize taxa
+common_taxa <- intersect(colnames(wet_prop), colnames(cave_prop))
+wet_prop    <- wet_prop[,  common_taxa]
+cave_prop   <- cave_prop[, common_taxa]
+```
+
+```{r definetimegrid}
+## STEP 3.2: Define a common time grid ----
+
+# Use wetland age range and full Hogup phase ranges for bounding
+age_min <- max(min(wet_age), min(unlist(lapply(phase_bounds, `[[`, "end"))))
+age_max <- min(max(wet_age), max(unlist(lapply(phase_bounds, `[[`, "start"))))
+
+time_grid <- seq(age_min, age_max, by = time_step)
+```
+
+```{r intpollenmatrix}
+## STEP 3.3: Helper to interpolate a pollen matrix to time_grid ----
+
+interp_pollen <- function(age_vec, prop_mat, new_ages) {
+  # age_vec: vector of sample ages (cal BP)
+  # prop_mat: rows = samples, cols = taxa (proportions)
+  # new_ages: desired ages (time_grid)
+  
+  ord <- order(age_vec)
+  age_vec  <- age_vec[ord]
+  prop_mat <- prop_mat[ord, , drop = FALSE]
+  
+  interp_mat <- sapply(
+    1:ncol(prop_mat),
+    function(j) approx(x = age_vec,
+                       y = prop_mat[, j],
+                       xout = new_ages,
+                       rule = 2)$y
+  )
+  interp_df <- as.data.frame(interp_mat)
+  colnames(interp_df) <- colnames(prop_mat)
+  rownames(interp_df) <- as.character(new_ages)
+  
+  # renormalize rows to sum to 1
+  rs <- rowSums(interp_df)
+  interp_df <- sweep(interp_df, 1, rs, "/")
+  
+  return(interp_df)
+}
+```
+
+Squared Chord Distance & RoC Functions
+```{r blahblah}
+## STEP 3.4: Functions for squared chord distance and RoC ----
+
+library(analogue)  # for distance() [file:1]
+
+compute_roc <- function(prop_df, ages) {
+  # prop_df rows must correspond to 'ages' (time_grid)
+  scd <- analogue::distance(
+    x = prop_df[-nrow(prop_df), , drop = FALSE],
+    y = prop_df[-1,           , drop = FALSE],
+    method = "SQchord"
+  )
+  age_mid <- (ages[-nrow(prop_df)] + ages[-1]) / 2
+  data.frame(age_mid = age_mid, SCD = as.numeric(scd))
+}
+
+compute_between <- function(wet_df, cave_df, ages) {
+  # wet_df, cave_df on same time_grid
+  scd <- analogue::distance(
+    x = wet_df,
+    y = cave_df,
+    method = "SQchord"
+  )
+  data.frame(age = ages, SCD = as.numeric(scd))
+}
+
+#Run Monte Carlo dissimilarity analyses
+# Storage: lists of list (one list per realization)
+roc_wet_A  <- vector("list", n_real)
+roc_cave_A <- vector("list", n_real)
+between_A  <- vector("list", n_real)
+
+roc_wet_B  <- vector("list", n_real)
+roc_cave_B <- vector("list", n_real)
+between_B  <- vector("list", n_real)
+
+for (k in 1:n_real) {
+  # Wetland interpolation (same for A and B)
+  wet_interp <- interp_pollen(wet_age, wet_prop, time_grid)
+  
+  # Analysis A: exclude residual
+  cave_age_A   <- age_realizations_excl[[k]]
+  cave_interp_A <- interp_pollen(cave_age_A[!hogup_meta$is_residual],
+                                 cave_prop[!hogup_meta$is_residual, ],
+                                 time_grid)
+  
+  roc_wet_A[[k]]  <- compute_roc(wet_interp,  time_grid)
+  roc_cave_A[[k]] <- compute_roc(cave_interp_A, time_grid)
+  between_A[[k]]  <- compute_between(wet_interp, cave_interp_A, time_grid)
+  
+  # Analysis B: include residual as mid-Holocene
+  cave_age_B   <- age_realizations_incl[[k]]
+  cave_interp_B <- interp_pollen(cave_age_B, cave_prop, time_grid)
+  
+  roc_wet_B[[k]]  <- compute_roc(wet_interp,  time_grid)
+  roc_cave_B[[k]] <- compute_roc(cave_interp_B, time_grid)
+  between_B[[k]]  <- compute_between(wet_interp, cave_interp_B, time_grid)
+}
+```
+
+Summarize
+```{r summarize}
+## STEP 3.5: Summarize across realizations (example for Analysis A) ----
+
+# Helper to bind all realizations into a matrix for one metric
+stack_metric <- function(list_of_df, colname = "SCD") {
+  # assume all dfs share same ages/order
+  do.call(cbind, lapply(list_of_df, `[[`, colname))
+}
+
+# Example: summarize cave RoC SCD for Analysis A
+roc_cave_A_mat <- stack_metric(roc_cave_A, colname = "SCD")  # rows = time intervals, cols = realizations
+age_mid_vec    <- roc_cave_A[[1]]$age_mid                     # shared age_mid
+
+roc_cave_A_summary <- data.frame(
+  age_mid = age_mid_vec,
+  median  = apply(roc_cave_A_mat, 1, median, na.rm = TRUE),
+  q025    = apply(roc_cave_A_mat, 1, quantile, probs = 0.025, na.rm = TRUE),
+  q975    = apply(roc_cave_A_mat, 1, quantile, probs = 0.975, na.rm = TRUE)
+)
+
+# Repeat similarly for:
+# - roc_wet_A, between_A
+# - roc_wet_B, roc_cave_B, between_B
+
+# You can then plot e.g. median ± envelope for each analysis.
+```
+
+```{r blahblah}
+
+```
