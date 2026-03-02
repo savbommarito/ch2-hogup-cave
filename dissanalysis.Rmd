@@ -68,9 +68,12 @@ time_step <- 250   # time step in years; adjust if needed
 ## We assume lower stratum number = older.
 
 # Separate pollen data from metadata
-meta_cols   <- c("sample", "stratum", "phase")
+meta_cols   <- c("sample", "stratum", "phase", "age")
 cave_pollen <- hogup_meta[, !colnames(hogup_meta) %in% meta_cols, drop = FALSE]
 hogup_meta  <- hogup_meta[,  meta_cols]
+
+# Coerce all pollen columns to numeric (guards against stray non-numeric entries)
+cave_pollen[] <- lapply(cave_pollen, function(x) suppressWarnings(as.numeric(as.character(x))))
 
 # Set row names to sample ID to enforce alignment
 rownames(cave_pollen) <- hogup_meta$sample
@@ -93,37 +96,128 @@ samples_per_phase
 ## STEP 2.3: Function to generate one set of ordered ages for all samples ----
 
 generate_ordered_ages <- function(meta, phase_bounds) {
-  # meta: hogup_meta with columns sample, stratum, phase
+  # meta: hogup_meta with columns sample, stratum, phase, age, is_residual
+  #   meta$age: exact cal BP date if known, NA otherwise
   # Returns: numeric vector of ages aligned with rows of 'meta'
-  
-  ages <- numeric(nrow(meta))   # placeholder
-  
-  # Loop over phases
+  #
+  # Anchored behaviour: samples with a finite age that are not residuals and
+  # fall within their phase bounds act as fixed anchors. Anchors divide the
+  # phase window into sub-intervals. Undated strata draw ordered-uniform ages
+  # within their sub-interval. Undated samples in an anchor stratum are drawn
+  # uniformly from the gap between the youngest assigned age in the immediately
+  # older adjacent stratum and the oldest assigned age in the immediately
+  # younger adjacent stratum (determined each realization after the sub-interval
+  # draws, so the bounds reflect the actual sampled positions).
+
+  ages <- numeric(nrow(meta))
+
   for (ph in names(phase_bounds)) {
-    idx <- which(meta$phase == ph)           # indices in this phase
-    if (length(idx) == 0) next               # skip if no samples
-    n   <- length(idx)                       # number of samples in phase
-    
-    # Draw and sort proportions across the whole phase
-    p   <- sort(runif(n, 0, 1))              # ordered U(0,1)
+    idx <- which(meta$phase == ph)
+    if (length(idx) == 0) next
 
-    # Map to ages using phase start and end
-    start <- phase_bounds[[ph]]["start"]
-    end   <- phase_bounds[[ph]]["end"]
-    ages_phase <- start + p * (end - start)  # ordered ages within phase
+    ph_meta  <- meta[idx, ]
+    ph_start <- phase_bounds[[ph]]["start"]  # older end (larger cal BP)
+    ph_end   <- phase_bounds[[ph]]["end"]    # younger end (smaller cal BP)
 
-    # Shuffle ages within each stratum so within-stratum order is random,
-    # while between-stratum ordering (older stratum = older ages) is preserved
-    strata_in_phase <- meta$stratum[idx]
-    for (s in unique(strata_in_phase)) {
-      s_pos <- which(strata_in_phase == s)
-      ages_phase[s_pos] <- sample(ages_phase[s_pos], size = length(s_pos))
+    # Anchors: finite age, not residual, within this phase's bounds
+    is_anchor <- is.finite(ph_meta$age) &
+                 !ph_meta$is_residual   &
+                 ph_meta$age <= ph_start &
+                 ph_meta$age >= ph_end
+
+    if (!any(is_anchor)) {
+      # No anchors: original ordered-uniform behaviour
+      n <- nrow(ph_meta)
+      p <- sort(runif(n, 0, 1))
+      a <- ph_start + p * (ph_end - ph_start)
+      for (s in unique(ph_meta$stratum)) {
+        sp <- which(ph_meta$stratum == s)
+        a[sp] <- sample(a[sp], size = length(sp))
+      }
+      ages[idx] <- a
+      next
     }
 
-    # Assign to these rows (meta is sorted by stratum within phase)
-    ages[idx] <- ages_phase
+    # One representative age per anchor stratum
+    anchor_strata <- sort(unique(ph_meta$stratum[is_anchor]))
+    anchor_ages   <- sapply(anchor_strata, function(s)
+      mean(ph_meta$age[ph_meta$stratum == s & is_anchor]))
+
+    # Sub-interval boundaries (oldest to youngest in cal BP):
+    #   [ph_start, anchor_ages[1], ..., ph_end]
+    bounds_old <- c(ph_start, anchor_ages)
+    bounds_yng <- c(anchor_ages, ph_end)
+
+    a <- rep(NA_real_, nrow(ph_meta))
+
+    # Pass 1: fix anchor samples at their exact known age
+    for (i in seq_along(anchor_strata)) {
+      sp <- which(ph_meta$stratum == anchor_strata[i] & is_anchor)
+      a[sp] <- ph_meta$age[sp]
+    }
+
+    # Pass 2: draw ordered-uniform ages for undated non-anchor strata
+    for (i in seq_along(bounds_old)) {
+      sub_old <- bounds_old[i]
+      sub_yng <- bounds_yng[i]
+
+      sub_strata <- if (i == 1) {
+        sort(unique(ph_meta$stratum[ph_meta$stratum < anchor_strata[1]]))
+      } else if (i <= length(anchor_strata)) {
+        sort(unique(ph_meta$stratum[ph_meta$stratum > anchor_strata[i - 1] &
+                                    ph_meta$stratum < anchor_strata[i]]))
+      } else {
+        sort(unique(ph_meta$stratum[ph_meta$stratum > anchor_strata[length(anchor_strata)]]))
+      }
+
+      if (length(sub_strata) == 0) next
+
+      # sub_idx is in stratum order because ph_meta is pre-sorted by stratum
+      sub_idx <- which(ph_meta$stratum %in% sub_strata)
+      n_sub   <- length(sub_idx)
+      p_sub   <- sort(runif(n_sub, 0, 1))
+      a[sub_idx] <- sub_old + p_sub * (sub_yng - sub_old)
+
+      # Shuffle within each stratum (within-stratum order is unknowable)
+      for (s in sub_strata) {
+        sp <- which(ph_meta$stratum == s)
+        if (length(sp) > 1) a[sp] <- sample(a[sp], size = length(sp))
+      }
+    }
+
+    # Pass 3: assign undated samples in anchor strata
+    # Bounds are derived from the actual assigned ages of the immediately
+    # adjacent strata (determined in Pass 2), not from the sub-interval edges.
+    for (i in seq_along(anchor_strata)) {
+      anc_s      <- anchor_strata[i]
+      undated_sp <- which(ph_meta$stratum == anc_s & !is_anchor)
+      if (length(undated_sp) == 0) next
+
+      # Immediately older adjacent stratum (largest stratum number < anc_s)
+      older_candidates <- unique(ph_meta$stratum[ph_meta$stratum < anc_s])
+      if (length(older_candidates) > 0) {
+        adj_older_sp <- which(ph_meta$stratum == max(older_candidates))
+        older_bound  <- min(a[adj_older_sp], na.rm = TRUE)
+      } else {
+        older_bound <- ph_start
+      }
+
+      # Immediately younger adjacent stratum (smallest stratum number > anc_s)
+      younger_candidates <- unique(ph_meta$stratum[ph_meta$stratum > anc_s])
+      if (length(younger_candidates) > 0) {
+        adj_younger_sp <- which(ph_meta$stratum == min(younger_candidates))
+        younger_bound  <- max(a[adj_younger_sp], na.rm = TRUE)
+      } else {
+        younger_bound <- ph_end
+      }
+
+      # Draw uniformly within [younger_bound, older_bound]
+      a[undated_sp] <- runif(length(undated_sp), younger_bound, older_bound)
+    }
+
+    ages[idx] <- a
   }
-  
+
   return(ages)
 }
 ```
@@ -153,10 +247,11 @@ generate_ordered_ages_incl_resid <- function(meta, phase_bounds, resid_range) {
   ages <- rep(NA_real_, nrow(meta))
   ages[!meta$is_residual] <- ages_no_resid
   
-  # assign residual sample a mid-Holocene age (either fixed or uniform)
+  # assign residual sample its exact date if available, otherwise draw uniformly
   resid_idx <- which(meta$is_residual)
   if (length(resid_idx) == 1) {
-    ages[resid_idx] <- runif(1, resid_range[1], resid_range[2])
+    exact_age <- meta$age[resid_idx]
+    ages[resid_idx] <- if (is.finite(exact_age)) exact_age else runif(1, resid_range[1], resid_range[2])
   }
   
   return(ages)
