@@ -346,3 +346,103 @@ roc_cave_B_summary <- summarise_metric(stack_metric(roc_cave_B), age_mid_vec, "a
 between_B_summary  <- summarise_metric(stack_metric(between_B),  age_vec,     "age")
 ```
 
+## Results
+```{r results, fig.width=9, fig.height=5}
+library(ggplot2)
+
+## Figure 1: Between-site SCD (Hogup Cave vs. Crescent Springs) ----
+# Higher SCD = greater dissimilarity between cave and wetland assemblages
+
+fig1_dat <- rbind(
+  cbind(between_A_summary, analysis = "A (excl. residual)"),
+  cbind(between_B_summary, analysis = "B (incl. residual)")
+)
+fig1_dat$analysis <- factor(fig1_dat$analysis,
+                             levels = c("A (excl. residual)", "B (incl. residual)"))
+
+fig1 <- ggplot(fig1_dat, aes(x = age, y = median,
+                              colour = analysis, fill = analysis)) +
+  geom_ribbon(aes(ymin = q025, ymax = q975), alpha = 0.2, colour = NA) +
+  geom_line(linewidth = 0.8) +
+  scale_x_reverse(name = "Age (cal BP)",
+                  breaks = seq(0, 10000, by = 1000)) +
+  scale_colour_manual(values = c("A (excl. residual)" = "#E69F00",
+                                 "B (incl. residual)" = "#56B4E9"),
+                      name = "Analysis") +
+  scale_fill_manual(values = c("A (excl. residual)" = "#E69F00",
+                                "B (incl. residual)" = "#56B4E9"),
+                    name = "Analysis") +
+  labs(y = "Squared Chord Distance",
+       title = "Between-site dissimilarity: Hogup Cave vs. Crescent Springs",
+       caption = "Shaded band = 95% Monte Carlo envelope (n = 200 realizations)") +
+  theme_bw(base_size = 11)
+
+print(fig1)
+
+## Figure 2: Within-site Rate of Change ----
+# SCD between consecutive interpolated time steps; captures local vegetation dynamics
+
+fig2_cave <- rbind(
+  cbind(roc_cave_A_summary, source = "Cave (A, excl. residual)"),
+  cbind(roc_cave_B_summary, source = "Cave (B, incl. residual)")
+)
+fig2_cave$source <- factor(fig2_cave$source,
+                            levels = c("Cave (A, excl. residual)",
+                                       "Cave (B, incl. residual)"))
+
+fig2_wet <- roc_wet_summary  # deterministic — single line, no envelope
+
+fig2 <- ggplot() +
+  # Wetland RoC (deterministic: dashed line, no CI band)
+  geom_line(data = fig2_wet,
+            aes(x = age_mid, y = median),
+            colour = "#009E73", linetype = "dashed", linewidth = 0.8) +
+  # Cave RoC MC envelopes
+  geom_ribbon(data = fig2_cave,
+              aes(x = age_mid, ymin = q025, ymax = q975,
+                  fill = source),
+              alpha = 0.2) +
+  geom_line(data = fig2_cave,
+            aes(x = age_mid, y = median, colour = source),
+            linewidth = 0.8) +
+  scale_x_reverse(name = "Age (cal BP)",
+                  breaks = seq(0, 10000, by = 1000)) +
+  scale_colour_manual(values = c("Cave (A, excl. residual)" = "#E69F00",
+                                 "Cave (B, incl. residual)" = "#56B4E9"),
+                      name = "Cave analysis") +
+  scale_fill_manual(values = c("Cave (A, excl. residual)" = "#E69F00",
+                                "Cave (B, incl. residual)" = "#56B4E9"),
+                    name = "Cave analysis") +
+  annotate("text", x = max(roc_wet_summary$age_mid), y = max(roc_wet_summary$median),
+           label = "Crescent Springs (wetland)", colour = "#009E73",
+           hjust = 0, vjust = -0.3, size = 3) +
+  labs(y = "Squared Chord Distance",
+       title = "Within-site rate of change",
+       caption = "Shaded band = 95% Monte Carlo envelope (n = 200 realizations).\nWetland RoC is deterministic (no age uncertainty).") +
+  theme_bw(base_size = 11)
+
+print(fig2)
+
+## Summary tables ----
+
+cat("\n### Between-site SCD summary (Analysis A — residual excluded)\n")
+knitr::kable(between_A_summary, digits = 4,
+             col.names = c("Age (cal BP)", "Median SCD", "2.5%", "97.5%"))
+
+cat("\n### Between-site SCD summary (Analysis B — residual as mid-Holocene)\n")
+knitr::kable(between_B_summary, digits = 4,
+             col.names = c("Age (cal BP)", "Median SCD", "2.5%", "97.5%"))
+
+cat("\n### Cave RoC summary (Analysis A)\n")
+knitr::kable(roc_cave_A_summary, digits = 4,
+             col.names = c("Age midpoint (cal BP)", "Median SCD", "2.5%", "97.5%"))
+
+cat("\n### Cave RoC summary (Analysis B)\n")
+knitr::kable(roc_cave_B_summary, digits = 4,
+             col.names = c("Age midpoint (cal BP)", "Median SCD", "2.5%", "97.5%"))
+
+cat("\n### Wetland RoC (Crescent Springs — deterministic)\n")
+knitr::kable(roc_wet_summary, digits = 4,
+             col.names = c("Age midpoint (cal BP)", "Median SCD", "2.5%", "97.5%"))
+```
+
