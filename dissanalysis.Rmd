@@ -118,7 +118,7 @@ generate_ordered_ages <- function(meta, phase_bounds) {
     strata_in_phase <- meta$stratum[idx]
     for (s in unique(strata_in_phase)) {
       s_pos <- which(strata_in_phase == s)
-      ages_phase[s_pos] <- sample(ages_phase[s_pos])
+      ages_phase[s_pos] <- sample(ages_phase[s_pos], size = length(s_pos))
     }
 
     # Assign to these rows (meta is sorted by stratum within phase)
