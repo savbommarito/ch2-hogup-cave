@@ -8,7 +8,7 @@ output:
     theme: cosmo
 ---
 
-Establish occupation periods defined by Martin et al. 2017
+## Setup
 ```{r setup, include=FALSE}
 ############################################################
 # WORKFLOW FOR HOGUP–WETLAND DISSIMILARITY ANALYSIS
@@ -62,7 +62,7 @@ table(hogup_meta$stratum, hogup_meta$phase)
 time_step <- 250   # time step in years; adjust if needed
 ```
 
-Ordered Monte Carlo age assignments for Hogup Cave samples
+## Ordered Monte Carlo Age Assignments
 ```{r ordersamples}
 ## STEP 2.1: Order samples within each phase by stratigraphy ----
 ## We assume lower stratum number = older.
@@ -187,7 +187,7 @@ for (k in 1:n_real) {
 ## For realization k, cave ages (including residual) = age_realizations_incl[[k]]
 ```
 
-Dissimilarity Analysis w Crescent Springs Core
+## Dissimilarity Analysis with Crescent Springs Core
 ```{r loadwetdata}
 ## STEP 3.0: Load Crescent Springs wetland pollen data ----
 
@@ -255,7 +255,7 @@ interp_pollen <- function(age_vec, prop_mat, new_ages) {
 }
 ```
 
-Squared Chord Distance & RoC Functions
+## Squared Chord Distance & Rate of Change
 ```{r dissfunctions}
 ## STEP 3.4: Functions for squared chord distance and RoC ----
 
@@ -311,7 +311,7 @@ for (k in 1:n_real) {
 }
 ```
 
-Summarize
+## Summarize Monte Carlo Results
 ```{r summarize}
 ## STEP 3.5: Summarize across realizations ----
 
