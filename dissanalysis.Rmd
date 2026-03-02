@@ -210,13 +210,19 @@ cave_prop   <- cave_prop[, common_taxa]
 ```
 
 ```{r definetimegrid}
-## STEP 3.2: Define a common time grid ----
+## STEP 3.2: Define time grids ----
 
-# Use wetland age range and full Hogup phase ranges for bounding
+# Shared overlap grid: wetland–cave intersection (used for between-site SCD)
 age_min <- max(min(wet_age), min(unlist(lapply(phase_bounds, `[[`, "end"))))
 age_max <- min(max(wet_age), max(unlist(lapply(phase_bounds, `[[`, "start"))))
-
 time_grid <- seq(age_min, age_max, by = time_step)
+
+# Cave-only grid: full Phase I–IV extent (used for within-site cave RoC)
+time_grid_cave <- seq(
+  min(unlist(lapply(phase_bounds, `[[`, "end"))),    # youngest phase end
+  max(unlist(lapply(phase_bounds, `[[`, "start"))),  # oldest phase start
+  by = time_step
+)
 ```
 
 ```{r intpollenmatrix}
@@ -282,11 +288,13 @@ roc_wet    <- compute_roc(wet_interp, time_grid)
 
 # Run Monte Carlo dissimilarity analyses
 # Storage: one list per realization
-roc_cave_A <- vector("list", n_real)
-between_A  <- vector("list", n_real)
+roc_cave_A      <- vector("list", n_real)  # cave RoC on overlap grid (unused in Fig 2)
+between_A       <- vector("list", n_real)
+roc_cave_full_A <- vector("list", n_real)  # cave RoC on full Phase I–IV grid
 
-roc_cave_B <- vector("list", n_real)
-between_B  <- vector("list", n_real)
+roc_cave_B      <- vector("list", n_real)
+between_B       <- vector("list", n_real)
+roc_cave_full_B <- vector("list", n_real)
 
 for (k in 1:n_real) {
   # Analysis A: exclude residual
@@ -294,16 +302,22 @@ for (k in 1:n_real) {
   cave_interp_A <- interp_pollen(cave_age_A[!hogup_meta$is_residual],
                                  cave_prop[!hogup_meta$is_residual, ],
                                  time_grid)
+  cave_interp_full_A <- interp_pollen(cave_age_A[!hogup_meta$is_residual],
+                                      cave_prop[!hogup_meta$is_residual, ],
+                                      time_grid_cave)
 
-  roc_cave_A[[k]] <- compute_roc(cave_interp_A, time_grid)
-  between_A[[k]]  <- compute_between(wet_interp, cave_interp_A, time_grid)
+  roc_cave_A[[k]]      <- compute_roc(cave_interp_A,      time_grid)
+  roc_cave_full_A[[k]] <- compute_roc(cave_interp_full_A, time_grid_cave)
+  between_A[[k]]       <- compute_between(wet_interp, cave_interp_A, time_grid)
 
   # Analysis B: include residual as mid-Holocene
   cave_age_B    <- age_realizations_incl[[k]]
   cave_interp_B <- interp_pollen(cave_age_B, cave_prop, time_grid)
+  cave_interp_full_B <- interp_pollen(cave_age_B, cave_prop, time_grid_cave)
 
-  roc_cave_B[[k]] <- compute_roc(cave_interp_B, time_grid)
-  between_B[[k]]  <- compute_between(wet_interp, cave_interp_B, time_grid)
+  roc_cave_B[[k]]      <- compute_roc(cave_interp_B,      time_grid)
+  roc_cave_full_B[[k]] <- compute_roc(cave_interp_full_B, time_grid_cave)
+  between_B[[k]]       <- compute_between(wet_interp, cave_interp_B, time_grid)
 }
 ```
 
@@ -326,8 +340,9 @@ summarise_metric <- function(mat, ages, age_col = "age_mid") {
   )
 }
 
-age_mid_vec <- roc_cave_A[[1]]$age_mid  # shared midpoint ages (RoC metrics)
-age_vec     <- between_A[[1]]$age       # shared time-grid ages (between metrics)
+age_mid_vec      <- roc_cave_A[[1]]$age_mid       # overlap-grid midpoints (RoC)
+age_mid_full_vec <- roc_cave_full_A[[1]]$age_mid  # cave-only midpoints (full RoC)
+age_vec          <- between_A[[1]]$age            # shared time-grid ages (between)
 
 # Wetland RoC is deterministic (no age uncertainty); reshape to match other summaries
 roc_wet_summary <- data.frame(
@@ -338,12 +353,14 @@ roc_wet_summary <- data.frame(
 )
 
 # Analysis A
-roc_cave_A_summary <- summarise_metric(stack_metric(roc_cave_A), age_mid_vec, "age_mid")
-between_A_summary  <- summarise_metric(stack_metric(between_A),  age_vec,     "age")
+roc_cave_A_summary      <- summarise_metric(stack_metric(roc_cave_A),      age_mid_vec,      "age_mid")
+roc_cave_full_A_summary <- summarise_metric(stack_metric(roc_cave_full_A), age_mid_full_vec, "age_mid")
+between_A_summary       <- summarise_metric(stack_metric(between_A),       age_vec,          "age")
 
 # Analysis B
-roc_cave_B_summary <- summarise_metric(stack_metric(roc_cave_B), age_mid_vec, "age_mid")
-between_B_summary  <- summarise_metric(stack_metric(between_B),  age_vec,     "age")
+roc_cave_B_summary      <- summarise_metric(stack_metric(roc_cave_B),      age_mid_vec,      "age_mid")
+roc_cave_full_B_summary <- summarise_metric(stack_metric(roc_cave_full_B), age_mid_full_vec, "age_mid")
+between_B_summary       <- summarise_metric(stack_metric(between_B),       age_vec,          "age")
 ```
 
 ## Results
@@ -391,8 +408,8 @@ print(fig1)
 
 ```{r fig2, fig.width=9, fig.height=5}
 fig2_cave <- rbind(
-  cbind(roc_cave_A_summary, source = "Cave (A, excl. residual)"),
-  cbind(roc_cave_B_summary, source = "Cave (B, incl. residual)")
+  cbind(roc_cave_full_A_summary, source = "Cave (A, excl. residual)"),
+  cbind(roc_cave_full_B_summary, source = "Cave (B, incl. residual)")
 )
 fig2_cave$source <- factor(fig2_cave$source,
                             levels = c("Cave (A, excl. residual)",
