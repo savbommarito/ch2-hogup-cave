@@ -23,7 +23,7 @@ library(magrittr)
 
 ```{r occphases}
 ## STEP 1.1: Define Martin et al. (2017) Phase boundaries ----
-## These are the phase windows you will use for pollen ages. [file:2]
+## These are the phase windows you will use for pollen ages.
 
 phase_bounds <- list(
   I  = c(start = 9790, end = 6490),  # Strata 1–7
@@ -94,7 +94,7 @@ samples_per_phase
 ## STEP 2.3: Function to generate one set of ordered ages for all samples ----
 
 generate_ordered_ages <- function(meta, phase_bounds) {
-  # meta: hogup_meta with columns phase, phase_start, phase_end
+  # meta: hogup_meta with columns sample, stratum, phase
   # Returns: numeric vector of ages aligned with rows of 'meta'
   
   ages <- numeric(nrow(meta))   # placeholder
@@ -247,8 +247,9 @@ interp_pollen <- function(age_vec, prop_mat, new_ages) {
   colnames(interp_df) <- colnames(prop_mat)
   rownames(interp_df) <- as.character(new_ages)
   
-  # renormalize rows to sum to 1
+  # renormalize rows to sum to 1 (guard against all-zero rows)
   rs <- rowSums(interp_df)
+  rs[rs == 0] <- 1
   interp_df <- sweep(interp_df, 1, rs, "/")
   
   return(interp_df)
@@ -280,35 +281,32 @@ compute_between <- function(wet_df, cave_df, ages) {
   data.frame(age = ages, SCD = diag(scd))
 }
 
+# Wetland interpolation and RoC are identical across all realizations
+wet_interp <- interp_pollen(wet_age, wet_prop, time_grid)
+roc_wet    <- compute_roc(wet_interp, time_grid)
+
 # Run Monte Carlo dissimilarity analyses
-# Storage: lists of list (one list per realization)
-roc_wet_A  <- vector("list", n_real)
+# Storage: one list per realization
 roc_cave_A <- vector("list", n_real)
 between_A  <- vector("list", n_real)
 
-roc_wet_B  <- vector("list", n_real)
 roc_cave_B <- vector("list", n_real)
 between_B  <- vector("list", n_real)
 
-# Wetland interpolation is identical across all realizations
-wet_interp <- interp_pollen(wet_age, wet_prop, time_grid)
-
 for (k in 1:n_real) {
   # Analysis A: exclude residual
-  cave_age_A   <- age_realizations_excl[[k]]
+  cave_age_A    <- age_realizations_excl[[k]]
   cave_interp_A <- interp_pollen(cave_age_A[!hogup_meta$is_residual],
                                  cave_prop[!hogup_meta$is_residual, ],
                                  time_grid)
-  
-  roc_wet_A[[k]]  <- compute_roc(wet_interp,  time_grid)
+
   roc_cave_A[[k]] <- compute_roc(cave_interp_A, time_grid)
   between_A[[k]]  <- compute_between(wet_interp, cave_interp_A, time_grid)
-  
+
   # Analysis B: include residual as mid-Holocene
-  cave_age_B   <- age_realizations_incl[[k]]
+  cave_age_B    <- age_realizations_incl[[k]]
   cave_interp_B <- interp_pollen(cave_age_B, cave_prop, time_grid)
-  
-  roc_wet_B[[k]]  <- compute_roc(wet_interp,  time_grid)
+
   roc_cave_B[[k]] <- compute_roc(cave_interp_B, time_grid)
   between_B[[k]]  <- compute_between(wet_interp, cave_interp_B, time_grid)
 }
@@ -336,14 +334,15 @@ summarise_metric <- function(mat, ages, age_col = "age_mid") {
 age_mid_vec <- roc_cave_A[[1]]$age_mid  # shared midpoint ages (RoC metrics)
 age_vec     <- between_A[[1]]$age       # shared time-grid ages (between metrics)
 
+# Wetland RoC is deterministic (no age uncertainty) — single data frame
+roc_wet_summary <- roc_wet
+
 # Analysis A
 roc_cave_A_summary <- summarise_metric(stack_metric(roc_cave_A), age_mid_vec, "age_mid")
-roc_wet_A_summary  <- summarise_metric(stack_metric(roc_wet_A),  age_mid_vec, "age_mid")
 between_A_summary  <- summarise_metric(stack_metric(between_A),  age_vec,     "age")
 
 # Analysis B
 roc_cave_B_summary <- summarise_metric(stack_metric(roc_cave_B), age_mid_vec, "age_mid")
-roc_wet_B_summary  <- summarise_metric(stack_metric(roc_wet_B),  age_mid_vec, "age_mid")
 between_B_summary  <- summarise_metric(stack_metric(between_B),  age_vec,     "age")
 ```
 
