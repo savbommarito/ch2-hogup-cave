@@ -12,17 +12,16 @@ output:
 ############################################################
 # WORKFLOW FOR HOGUP–WETLAND DISSIMILARITY ANALYSIS
 # Using Martin et al. (2017) phases, ordered Monte Carlo ages,
-# and two analyses for the Stratum 9 residual sample.
+# and separate analyses for the Stratum 9 residual sample.
 ############################################################
 if (!require("here")) install.packages("here")
 library(here)
 library(analogue)
 ```
 
-## Occupation Phase Boundaries
+## Hogup Cave Occupational Phase Boundaries
 ```{r occphases}
-## STEP 1.1: Define Martin et al. (2017) Phase boundaries ----
-## These are the phase windows you will use for pollen ages.
+## STEP 1.1: Define Martin et al. (2017) occupational phase boundaries ----
 
 phase_bounds <- list(
   I  = c(start = 9790, end = 6490),  # Strata 1–7
@@ -33,7 +32,7 @@ phase_bounds <- list(
 ```
 
 ```{r maptooccphases}
-## STEP 1.2: Map each cave pollen sample (row) to a Phase ----
+## STEP 1.2: Map each cave pollen sample to a occupational phase ----
 
 hogup_meta <- read.csv(here("..", "data", "raw", "hogup_pollen.csv"), check.names = TRUE)
 
@@ -48,10 +47,6 @@ stratum_to_phase <- function(stratum) {
 
 hogup_meta$phase <- vapply(hogup_meta$stratum, stratum_to_phase, character(1))
 hogup_meta$phase <- factor(hogup_meta$phase, levels = c("I", "II", "III", "IV"))
-```
-
-```{r confirmmapping}
-## STEP 1.3: Confirm mapping from phases to age windows ----
 
 table(hogup_meta$stratum, hogup_meta$phase)
 ```
@@ -59,20 +54,19 @@ table(hogup_meta$stratum, hogup_meta$phase)
 ```{r timestep}
 ## STEP 1.4: Choose a global time step for interpolation ----
 
-time_step <- 250   # time step in years; adjust if needed
+time_step <- 100   # time step in years; adjust if needed
 ```
 
 ## Ordered Monte Carlo Age Assignments
 ```{r ordersamples}
-## STEP 2.1: Order samples within each phase by stratigraphy ----
-## We assume lower stratum number = older.
+## STEP 2.1: Order samples within each phase by stratum ----
 
 # Separate pollen data from metadata
 meta_cols   <- c("sample", "stratum", "phase", "age")
 cave_pollen <- hogup_meta[, !colnames(hogup_meta) %in% meta_cols, drop = FALSE]
 hogup_meta  <- hogup_meta[,  meta_cols]
 
-# Coerce all pollen columns to numeric (guards against stray non-numeric entries)
+# Coerce all pollen columns to numeric
 cave_pollen[] <- lapply(cave_pollen, function(x) suppressWarnings(as.numeric(as.character(x))))
 
 # Set row names to sample ID to enforce alignment
@@ -80,24 +74,21 @@ rownames(cave_pollen) <- hogup_meta$sample
 rownames(hogup_meta)  <- hogup_meta$sample
 
 # Sort by stratum within phase (lower stratum number = older)
+# Sample order within a particular stratum is shuffled
 hogup_meta  <- hogup_meta[order(hogup_meta$phase, hogup_meta$stratum), ]
 cave_pollen <- cave_pollen[rownames(hogup_meta), ]
 
-```
-
-```{r countsamples}
-## STEP 2.2: Count samples per phase ----
-
+# Count samples per phase
 samples_per_phase <- table(hogup_meta$phase)
 samples_per_phase
 ```
 
-```{r generateages}
+```{r generateagesfunction}
 ## STEP 2.3: Function to generate one set of ordered ages for all samples ----
 
 generate_ordered_ages <- function(meta, phase_bounds) {
   # meta: hogup_meta with columns sample, stratum, phase, age, is_residual
-  #   meta$age: exact cal BP date if known, NA otherwise
+  # meta$age: exact cal BP date if known, NA otherwise
   # Returns: numeric vector of ages aligned with rows of 'meta'
   #
   # Anchored behaviour: samples with a finite age that are not residuals and
@@ -261,7 +252,7 @@ generate_ordered_ages_incl_resid <- function(meta, phase_bounds, resid_range) {
 ```{r montecarlo}
 ## STEP 2.5: Generate many Monte Carlo realizations of ages ----
 
-n_real <- 200   # number of Monte Carlo realizations (adjust as needed)
+n_real <- 500   # number of Monte Carlo realizations (adjust as needed, 200-1000)
 
 # Storage lists
 age_realizations_excl <- vector("list", n_real)
@@ -279,7 +270,7 @@ for (k in 1:n_real) {
 Age vectors now align with rows of `cave_pollen`. For realization `k`, cave ages excluding the residual are in `age_realizations_excl[[k]]` and cave ages including the residual as mid-Holocene are in `age_realizations_incl[[k]]`.
 
 ## Dissimilarity Analysis with Crescent Springs Core
-```{r loadwetdata}
+```{r loadcsdata}
 ## STEP 3.0: Load Crescent Springs wetland pollen data ----
 
 crescent_raw <- read.csv(here("..", "data", "raw", "crescent_pollen.csv"), check.names = TRUE)
