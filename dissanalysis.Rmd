@@ -1,7 +1,11 @@
 ---
 title: "Dissimilarity Analysis - Hogup Cave & Crescent Springs"
-output: html_document
 date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: cosmo
 ---
 
 Establish occupation periods defined by Martin et al. 2017
@@ -11,6 +15,8 @@ Establish occupation periods defined by Martin et al. 2017
 # Using Martin et al. (2017) phases, ordered Monte Carlo ages,
 # and two analyses for the Stratum 9 residual sample.
 ############################################################
+if (!require("here")) install.packages("here")
+library(here)
 library(analogue)
 library(magrittr)
 ```
@@ -29,18 +35,8 @@ phase_bounds <- list(
 
 ```{r maptooccphases}
 ## STEP 1.2: Map each cave pollen sample (row) to a Phase ----
-## USER: create a data frame 'hogup_meta' with at least:
-##   - sample_id: unique label
-##   - stratum: integer 1–16
-##   - depth or order index within stratum (if available)
 
-# Example structure (replace with your real metadata)
-# hogup_meta <- data.frame(
-#   sample_id = rownames(cave_pollen),
-#   stratum   = c(...),    # numeric codes 1–16
-#   depth_cm  = c(...)     # optional, for ordering within stratum
-# )
-hogup_meta <- read.csv("hogup_pollen.csv", check.names = TRUE)
+hogup_meta <- read.csv(here("..", "data", "raw", "hogup_pollen.csv"), check.names = TRUE)
 
 # Function to map stratum to phase label
 stratum_to_phase <- function(stratum) {
@@ -52,15 +48,13 @@ stratum_to_phase <- function(stratum) {
 }
 
 hogup_meta$phase <- vapply(hogup_meta$stratum, stratum_to_phase, character(1))
+hogup_meta$phase <- factor(hogup_meta$phase, levels = c("I", "II", "III", "IV"))
 ```
 
 ```{r confirmmapping}
 ## STEP 1.3: Confirm mapping from phases to age windows ----
-## phase_bounds already holds the windows; here we just attach
-## them to each sample in 'hogup_meta' for convenience.
 
-hogup_meta$phase_start <- phase_bounds[hogup_meta$phase] %>% sapply(`[`, "start")
-hogup_meta$phase_end   <- phase_bounds[hogup_meta$phase] %>% sapply(`[`, "end")
+table(hogup_meta$stratum, hogup_meta$phase)
 ```
 
 ```{r timestep}
@@ -72,19 +66,20 @@ time_step <- 250   # time step in years; adjust if needed
 Ordered Monte Carlo age assignments for Hogup Cave samples
 ```{r ordersamples}
 ## STEP 2.1: Order samples within each phase by stratigraphy ----
-## We assume lower stratum number = older; within stratum,
-## use depth_cm or some order index if available.
+## We assume lower stratum number = older.
 
-# First ensure cave_pollen rows match hogup_meta$sample_id
-# cave_pollen: matrix/data.frame of Hogup pollen (%), rows = samples.
-# rownames(cave_pollen) <- hogup_meta$sample_id   # enforce alignment
+# Separate pollen data from metadata
+meta_cols   <- c("sample", "stratum", "phase")
+cave_pollen <- hogup_meta[, !colnames(hogup_meta) %in% meta_cols, drop = FALSE]
+hogup_meta  <- hogup_meta[,  meta_cols]
 
-# Create an order index per phase: sort by (stratum, depth) within phase
-hogup_meta <- hogup_meta[order(hogup_meta$phase,
-                               hogup_meta$stratum), ]
+# Set row names to sample ID to enforce alignment
+rownames(cave_pollen) <- hogup_meta$sample
+rownames(hogup_meta)  <- hogup_meta$sample
 
-# Reorder cave_pollen to match this sorted metadata
-cave_pollen <- cave_pollen[hogup_meta$sample_id, ]
+# Sort by stratum within phase (lower stratum number = older)
+hogup_meta  <- hogup_meta[order(hogup_meta$phase, hogup_meta$stratum), ]
+cave_pollen <- cave_pollen[rownames(hogup_meta), ]
 
 ```
 
@@ -136,11 +131,9 @@ generate_ordered_ages <- function(meta, phase_bounds) {
 
 ```{r residualsamples}
 ## STEP 2.4: Handle the Stratum 9 residual pollen sample ----
-## Assume hogup_meta has a logical flag 'is_residual' for that sample.
 
-# Example: mark the known residual sample
-# hogup_meta$is_residual <- FALSE
-# hogup_meta$is_residual[hogup_meta$sample_id == "your_residual_sample_id"] <- TRUE
+hogup_meta$is_residual <- FALSE
+hogup_meta$is_residual[hogup_meta$sample == 357] <- TRUE
 
 residual_age_range <- c(4478, 4873)  # calibrated mid-Holocene range (cal BP)
 
@@ -189,7 +182,7 @@ for (k in 1:n_real) {
 }
 ```
 
-```{r blahblah}
+```{r agenote}
 ## STEP 2.6: Age vectors now align with rows of cave_pollen ----
 ## For realization k, cave ages (excluding residual) = age_realizations_excl[[k]]
 ## For realization k, cave ages (including residual) = age_realizations_incl[[k]]
@@ -199,11 +192,11 @@ Dissimilarity Analysis w Crescent Springs Core
 ```{r loadwetdata}
 ## STEP 3.0: Load Crescent Springs wetland pollen data ----
 
-crescent_raw <- read.csv("crescent_pollen.csv", check.names = TRUE)
+crescent_raw <- read.csv(here("..", "data", "raw", "crescent_pollen.csv"), check.names = TRUE)
 
 wet_age <- crescent_raw$Age  # cal yr BP
 
-meta_cols  <- c("Depth", "Age", "Pollen Sum", "Terrestrial", "Lyco")
+meta_cols  <- c("Depth", "Age", "Pollen.Sum", "Terrestrial", "Lyco")
 wet_pollen <- crescent_raw[, !colnames(crescent_raw) %in% meta_cols, drop = FALSE]
 rownames(wet_pollen) <- crescent_raw$Depth
 ```
@@ -263,10 +256,8 @@ interp_pollen <- function(age_vec, prop_mat, new_ages) {
 ```
 
 Squared Chord Distance & RoC Functions
-```{r blahblah}
+```{r dissfunctions}
 ## STEP 3.4: Functions for squared chord distance and RoC ----
-
-library(analogue)  # for distance() [file:1]
 
 compute_roc <- function(prop_df, ages) {
   # prop_df rows must correspond to 'ages' (time_grid)
@@ -276,7 +267,7 @@ compute_roc <- function(prop_df, ages) {
     method = "SQchord"
   )
   age_mid <- (ages[-nrow(prop_df)] + ages[-1]) / 2
-  data.frame(age_mid = age_mid, SCD = as.numeric(scd))
+  data.frame(age_mid = age_mid, SCD = diag(scd))
 }
 
 compute_between <- function(wet_df, cave_df, ages) {
@@ -286,10 +277,10 @@ compute_between <- function(wet_df, cave_df, ages) {
     y = cave_df,
     method = "SQchord"
   )
-  data.frame(age = ages, SCD = as.numeric(scd))
+  data.frame(age = ages, SCD = diag(scd))
 }
 
-#Run Monte Carlo dissimilarity analyses
+# Run Monte Carlo dissimilarity analyses
 # Storage: lists of list (one list per realization)
 roc_wet_A  <- vector("list", n_real)
 roc_cave_A <- vector("list", n_real)
@@ -299,10 +290,10 @@ roc_wet_B  <- vector("list", n_real)
 roc_cave_B <- vector("list", n_real)
 between_B  <- vector("list", n_real)
 
+# Wetland interpolation is identical across all realizations
+wet_interp <- interp_pollen(wet_age, wet_prop, time_grid)
+
 for (k in 1:n_real) {
-  # Wetland interpolation (same for A and B)
-  wet_interp <- interp_pollen(wet_age, wet_prop, time_grid)
-  
   # Analysis A: exclude residual
   cave_age_A   <- age_realizations_excl[[k]]
   cave_interp_A <- interp_pollen(cave_age_A[!hogup_meta$is_residual],
@@ -325,32 +316,34 @@ for (k in 1:n_real) {
 
 Summarize
 ```{r summarize}
-## STEP 3.5: Summarize across realizations (example for Analysis A) ----
+## STEP 3.5: Summarize across realizations ----
 
-# Helper to bind all realizations into a matrix for one metric
+# Helper: stack one SCD column from all realizations into a matrix
 stack_metric <- function(list_of_df, colname = "SCD") {
-  # assume all dfs share same ages/order
   do.call(cbind, lapply(list_of_df, `[[`, colname))
 }
 
-# Example: summarize cave RoC SCD for Analysis A
-roc_cave_A_mat <- stack_metric(roc_cave_A, colname = "SCD")  # rows = time intervals, cols = realizations
-age_mid_vec    <- roc_cave_A[[1]]$age_mid                     # shared age_mid
+# Helper: compute median and 95% CI envelope from a stacked matrix
+summarise_metric <- function(mat, ages, age_col = "age_mid") {
+  data.frame(
+    setNames(list(ages), age_col),
+    median = apply(mat, 1, median,   na.rm = TRUE),
+    q025   = apply(mat, 1, quantile, probs = 0.025, na.rm = TRUE),
+    q975   = apply(mat, 1, quantile, probs = 0.975, na.rm = TRUE)
+  )
+}
 
-roc_cave_A_summary <- data.frame(
-  age_mid = age_mid_vec,
-  median  = apply(roc_cave_A_mat, 1, median, na.rm = TRUE),
-  q025    = apply(roc_cave_A_mat, 1, quantile, probs = 0.025, na.rm = TRUE),
-  q975    = apply(roc_cave_A_mat, 1, quantile, probs = 0.975, na.rm = TRUE)
-)
+age_mid_vec <- roc_cave_A[[1]]$age_mid  # shared midpoint ages (RoC metrics)
+age_vec     <- between_A[[1]]$age       # shared time-grid ages (between metrics)
 
-# Repeat similarly for:
-# - roc_wet_A, between_A
-# - roc_wet_B, roc_cave_B, between_B
+# Analysis A
+roc_cave_A_summary <- summarise_metric(stack_metric(roc_cave_A), age_mid_vec, "age_mid")
+roc_wet_A_summary  <- summarise_metric(stack_metric(roc_wet_A),  age_mid_vec, "age_mid")
+between_A_summary  <- summarise_metric(stack_metric(between_A),  age_vec,     "age")
 
-# You can then plot e.g. median ± envelope for each analysis.
+# Analysis B
+roc_cave_B_summary <- summarise_metric(stack_metric(roc_cave_B), age_mid_vec, "age_mid")
+roc_wet_B_summary  <- summarise_metric(stack_metric(roc_wet_B),  age_mid_vec, "age_mid")
+between_B_summary  <- summarise_metric(stack_metric(between_B),  age_vec,     "age")
 ```
 
-```{r blahblah}
-
-```
