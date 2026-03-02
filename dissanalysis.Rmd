@@ -8,7 +8,6 @@ output:
     theme: cosmo
 ---
 
-## Setup
 ```{r setup, include=FALSE}
 ############################################################
 # WORKFLOW FOR HOGUP–WETLAND DISSIMILARITY ANALYSIS
