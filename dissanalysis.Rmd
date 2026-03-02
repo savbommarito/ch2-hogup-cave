@@ -347,11 +347,9 @@ between_B_summary  <- summarise_metric(stack_metric(between_B),  age_vec,     "a
 ```
 
 ## Results
-```{r results, fig.width=9, fig.height=5}
-library(ggplot2)
 
-## Figure 1: Between-site SCD (Hogup Cave vs. Crescent Springs) ----
-# Higher SCD = greater dissimilarity between cave and wetland assemblages
+```{r fig1, fig.width=9, fig.height=5}
+library(ggplot2)
 
 fig1_dat <- rbind(
   cbind(between_A_summary, analysis = "A (excl. residual)"),
@@ -378,10 +376,11 @@ fig1 <- ggplot(fig1_dat, aes(x = age, y = median,
   theme_bw(base_size = 11)
 
 print(fig1)
+```
 
-## Figure 2: Within-site Rate of Change ----
-# SCD between consecutive interpolated time steps; captures local vegetation dynamics
+**Figure 1** shows how dissimilar the pollen assemblages at Hogup Cave were from the contemporaneous wetland at Crescent Springs through time. High SCD indicates the two sites were recording very different vegetation — the cave and wetland assemblages were diverging. Low SCD indicates convergence, either because the wetland was influencing cave deposits or both sites were responding to the same regional conditions. Sustained high dissimilarity across a phase suggests Hogup Cave was accumulating pollen from a distinctly different local or regional source than the wetland (e.g., upland steppe taxa vs. wetland aquatics and halophytes). A drop in dissimilarity would suggest a convergence in vegetation — perhaps a wetter period pulling the cave assemblage toward wetland-type taxa — or a shift in human activity affecting what pollen entered the cave. The two analysis lines (A and B) allow assessment of whether the Stratum 9 residual sample meaningfully affects the pattern. If both lines track closely, the residual has little influence and the interpretation is robust. If they diverge, the timing and placement of that sample is driving the result and warrants closer attention.
 
+```{r fig2, fig.width=9, fig.height=5}
 fig2_cave <- rbind(
   cbind(roc_cave_A_summary, source = "Cave (A, excl. residual)"),
   cbind(roc_cave_B_summary, source = "Cave (B, incl. residual)")
@@ -393,11 +392,9 @@ fig2_cave$source <- factor(fig2_cave$source,
 fig2_wet <- roc_wet_summary  # deterministic — single line, no envelope
 
 fig2 <- ggplot() +
-  # Wetland RoC (deterministic: dashed line, no CI band)
   geom_line(data = fig2_wet,
             aes(x = age_mid, y = median),
             colour = "#009E73", linetype = "dashed", linewidth = 0.8) +
-  # Cave RoC MC envelopes
   geom_ribbon(data = fig2_cave,
               aes(x = age_mid, ymin = q025, ymax = q975,
                   fill = source),
@@ -422,27 +419,31 @@ fig2 <- ggplot() +
   theme_bw(base_size = 11)
 
 print(fig2)
+```
 
-## Summary tables ----
+**Figure 2** shows how rapidly the pollen assemblage was changing internally at each site between consecutive time steps. High RoC (high SCD) indicates a period of ecological instability or rapid vegetation turnover, while low RoC indicates a stable, persistent vegetation community. The wetland line (dashed green) is deterministic — it carries no age uncertainty — so its peaks represent real, dateable vegetation transitions in the Crescent Springs basin. The cave envelopes (orange/blue) carry Monte Carlo age uncertainty: wider bands indicate time periods with fewer or more loosely constrained samples, where the biological signal is real but the exact timing is uncertain. Comparing the two sites, if a RoC peak appears at roughly the same time in both the cave and the wetland, it suggests a synchronous regional event such as a climatic shift. Asynchronous peaks may reflect site-specific processes — changes in human occupation intensity, local microenvironment, or taphonomy at the cave. As with Figure 1, comparing lines A and B reveals whether the Stratum 9 residual affects the timing or magnitude of rate-of-change events.
 
-cat("\n### Between-site SCD summary (Analysis A — residual excluded)\n")
+### Summary tables
+
+```{r tables}
 knitr::kable(between_A_summary, digits = 4,
-             col.names = c("Age (cal BP)", "Median SCD", "2.5%", "97.5%"))
+             col.names = c("Age (cal BP)", "Median SCD", "2.5%", "97.5%"),
+             caption = "Between-site SCD — Analysis A (residual excluded)")
 
-cat("\n### Between-site SCD summary (Analysis B — residual as mid-Holocene)\n")
 knitr::kable(between_B_summary, digits = 4,
-             col.names = c("Age (cal BP)", "Median SCD", "2.5%", "97.5%"))
+             col.names = c("Age (cal BP)", "Median SCD", "2.5%", "97.5%"),
+             caption = "Between-site SCD — Analysis B (residual as mid-Holocene)")
 
-cat("\n### Cave RoC summary (Analysis A)\n")
 knitr::kable(roc_cave_A_summary, digits = 4,
-             col.names = c("Age midpoint (cal BP)", "Median SCD", "2.5%", "97.5%"))
+             col.names = c("Age midpoint (cal BP)", "Median SCD", "2.5%", "97.5%"),
+             caption = "Cave RoC — Analysis A")
 
-cat("\n### Cave RoC summary (Analysis B)\n")
 knitr::kable(roc_cave_B_summary, digits = 4,
-             col.names = c("Age midpoint (cal BP)", "Median SCD", "2.5%", "97.5%"))
+             col.names = c("Age midpoint (cal BP)", "Median SCD", "2.5%", "97.5%"),
+             caption = "Cave RoC — Analysis B")
 
-cat("\n### Wetland RoC (Crescent Springs — deterministic)\n")
 knitr::kable(roc_wet_summary, digits = 4,
-             col.names = c("Age midpoint (cal BP)", "Median SCD", "2.5%", "97.5%"))
+             col.names = c("Age midpoint (cal BP)", "Median SCD", "2.5%", "97.5%"),
+             caption = "Wetland RoC — Crescent Springs (deterministic)")
 ```
 
