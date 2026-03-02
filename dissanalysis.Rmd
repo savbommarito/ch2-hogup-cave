@@ -20,6 +20,7 @@ library(here)
 library(analogue)
 ```
 
+## Occupation Phase Boundaries
 ```{r occphases}
 ## STEP 1.1: Define Martin et al. (2017) Phase boundaries ----
 ## These are the phase windows you will use for pollen ages.
@@ -181,11 +182,7 @@ for (k in 1:n_real) {
 }
 ```
 
-```{r agenote}
-## STEP 2.6: Age vectors now align with rows of cave_pollen ----
-## For realization k, cave ages (excluding residual) = age_realizations_excl[[k]]
-## For realization k, cave ages (including residual) = age_realizations_incl[[k]]
-```
+Age vectors now align with rows of `cave_pollen`. For realization `k`, cave ages excluding the residual are in `age_realizations_excl[[k]]` and cave ages including the residual as mid-Holocene are in `age_realizations_incl[[k]]`.
 
 ## Dissimilarity Analysis with Crescent Springs Core
 ```{r loadwetdata}
