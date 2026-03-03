@@ -252,7 +252,7 @@ generate_ordered_ages_incl_resid <- function(meta, phase_bounds, resid_range) {
 ```{r montecarlo}
 ## STEP 2.5: Generate many Monte Carlo realizations of ages ----
 
-n_real <- 500   # number of Monte Carlo realizations (adjust as needed, 200-1000)
+n_real <- 1000   # number of Monte Carlo realizations (adjust as needed, 200-1000)
 
 # Storage lists
 age_realizations_excl <- vector("list", n_real)
@@ -468,14 +468,15 @@ fig1 <- ggplot(fig1_dat, aes(x = age, y = median,
   annotate("rect", xmin = 3330, xmax = 5840, ymin = -Inf, ymax = Inf, alpha = 0.06, fill = "grey50") +
   annotate("rect", xmin = 2760, xmax = 2870, ymin = -Inf, ymax = Inf, alpha = 0.12, fill = "grey50") +
   annotate("rect", xmin =  360, xmax = 2610, ymin = -Inf, ymax = Inf, alpha = 0.06, fill = "grey50") +
-  annotate("text", x = (6490 + 9790) / 2, y = Inf, label = "Phase I",   vjust = 1.4, size = 3, colour = "grey35") +
+  annotate("text", x = (6490 + 7500) / 2, y = Inf, label = "Phase I",   vjust = 1.4, size = 3, colour = "grey35") +
   annotate("text", x = (3330 + 5840) / 2, y = Inf, label = "Phase II",  vjust = 1.4, size = 3, colour = "grey35") +
   annotate("text", x = (2760 + 2870) / 2, y = Inf, label = "III",       vjust = 1.4, size = 2.5, colour = "grey35") +
   annotate("text", x = ( 360 + 2610) / 2, y = Inf, label = "Phase IV",  vjust = 1.4, size = 3, colour = "grey35") +
   geom_ribbon(aes(ymin = q025, ymax = q975), alpha = 0.2, colour = NA) +
   geom_line(linewidth = 0.8) +
   scale_x_reverse(name = "Age (cal BP)",
-                  breaks = seq(0, 10000, by = 1000)) +
+                  limits = c(7500, NA),
+                  breaks = seq(0, 7500, by = 500)) +
   scale_colour_manual(values = c("A (excl. residual)" = "#E69F00",
                                  "B (incl. residual)" = "#56B4E9"),
                       name = "Analysis") +
@@ -484,7 +485,7 @@ fig1 <- ggplot(fig1_dat, aes(x = age, y = median,
                     name = "Analysis") +
   labs(y = "Squared Chord Distance",
        title = "Between-site dissimilarity: Hogup Cave vs. Crescent Springs",
-       caption = "Shaded band = 95% Monte Carlo envelope (n = 200 realizations)") +
+       caption = "Shaded band = 95% Monte Carlo envelope (n = 1000 realizations)") +
   theme_bw(base_size = 11)
 
 print(fig1)
@@ -525,6 +526,7 @@ fig2 <- ggplot() +
             linewidth = 0.8) +
   scale_x_reverse(name = "Age (cal BP)",
                   breaks = seq(0, 10000, by = 1000)) +
+  scale_y_log10(name = "Squared Chord Distance (log scale)") +
   scale_colour_manual(values = c("Cave (A, excl. residual)" = "#E69F00",
                                  "Cave (B, incl. residual)" = "#56B4E9"),
                       name = "Cave analysis") +
@@ -534,9 +536,8 @@ fig2 <- ggplot() +
   annotate("text", x = max(roc_wet_summary$age_mid), y = max(roc_wet_summary$median),
            label = "Crescent Springs (wetland)", colour = "#009E73",
            hjust = 0, vjust = -0.3, size = 3) +
-  labs(y = "Squared Chord Distance",
-       title = "Within-site rate of change",
-       caption = "Shaded band = 95% Monte Carlo envelope (n = 200 realizations).\nWetland RoC is deterministic (no age uncertainty).") +
+  labs(title = "Within-site rate of change",
+       caption = "Shaded band = 95% Monte Carlo envelope (n = 1000 realizations).\nWetland RoC is deterministic (no age uncertainty).") +
   theme_bw(base_size = 11)
 
 print(fig2)
