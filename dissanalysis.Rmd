@@ -546,6 +546,63 @@ print(fig2)
 
 **Figure 2** shows how rapidly the pollen assemblage was changing internally at each site between consecutive time steps. High RoC (high SCD) indicates a period of ecological instability or rapid vegetation turnover, while low RoC indicates a stable, persistent vegetation community. The wetland line (dashed green) is deterministic — it carries no age uncertainty — so its peaks represent real, dateable vegetation transitions in the Crescent Springs basin. The cave envelopes (orange/blue) carry Monte Carlo age uncertainty: wider bands indicate time periods with fewer or more loosely constrained samples, where the biological signal is real but the exact timing is uncertain. Comparing the two sites, if a RoC peak appears at roughly the same time in both the cave and the wetland, it suggests a synchronous regional event such as a climatic shift. Asynchronous peaks may reflect site-specific processes — changes in human occupation intensity, local microenvironment, or taphonomy at the cave. As with Figure 1, comparing lines A and B reveals whether the Stratum 9 residual affects the timing or magnitude of rate-of-change events.
 
+```{r fig3, fig.width=9, fig.height=5}
+# Helper: TRUE for ages falling within any occupational phase
+in_occ_phase <- function(age) {
+  Reduce(`|`, lapply(phase_bounds, function(b) age >= b["end"] & age <= b["start"]))
+}
+
+fig3_dat <- rbind(
+  cbind(between_A_summary, analysis = "A (excl. residual)"),
+  cbind(between_B_summary, analysis = "B (incl. residual)")
+)
+fig3_dat$analysis <- factor(fig3_dat$analysis,
+                             levels = c("A (excl. residual)", "B (incl. residual)"))
+
+# Convert SCD to chord similarity (1 - SCD/2); ranges 0 (dissimilar) to 1 (identical)
+# Quantile order flips: low SCD = high similarity, so q025_SCD -> q975_sim
+fig3_dat$sim_median <- 1 - fig3_dat$median / 2
+fig3_dat$sim_q025   <- 1 - fig3_dat$q975   / 2
+fig3_dat$sim_q975   <- 1 - fig3_dat$q025   / 2
+
+# Mask inter-phase gaps — no cave data, so between-site comparison is uninformative
+outside <- !in_occ_phase(fig3_dat$age)
+fig3_dat$sim_median[outside] <- NA
+fig3_dat$sim_q025[outside]   <- NA
+fig3_dat$sim_q975[outside]   <- NA
+
+fig3 <- ggplot(fig3_dat, aes(x = age, y = sim_median,
+                              colour = analysis, fill = analysis)) +
+  # Occupation phase bands (Martin et al. 2017) — drawn first, beneath data
+  annotate("rect", xmin = 6490, xmax = 9790, ymin = -Inf, ymax = Inf, alpha = 0.12, fill = "grey50") +
+  annotate("rect", xmin = 3330, xmax = 5840, ymin = -Inf, ymax = Inf, alpha = 0.06, fill = "grey50") +
+  annotate("rect", xmin = 2760, xmax = 2870, ymin = -Inf, ymax = Inf, alpha = 0.12, fill = "grey50") +
+  annotate("rect", xmin =  360, xmax = 2610, ymin = -Inf, ymax = Inf, alpha = 0.06, fill = "grey50") +
+  annotate("text", x = (6490 + 9790) / 2, y = Inf, label = "Phase I",   vjust = 1.4, size = 3, colour = "grey35") +
+  annotate("text", x = (3330 + 5840) / 2, y = Inf, label = "Phase II",  vjust = 1.4, size = 3, colour = "grey35") +
+  annotate("text", x = (2760 + 2870) / 2, y = Inf, label = "III",       vjust = 1.4, size = 2.5, colour = "grey35") +
+  annotate("text", x = ( 360 + 2610) / 2, y = Inf, label = "Phase IV",  vjust = 1.4, size = 3, colour = "grey35") +
+  geom_ribbon(aes(ymin = sim_q025, ymax = sim_q975), alpha = 0.2, colour = NA) +
+  geom_line(linewidth = 0.8) +
+  scale_x_reverse(name = "Age (cal BP)",
+                  breaks = seq(0, 10000, by = 1000)) +
+  scale_y_continuous(name = "Chord Similarity",
+                     limits = c(0, 1)) +
+  scale_colour_manual(values = c("A (excl. residual)" = "#E69F00",
+                                 "B (incl. residual)" = "#56B4E9"),
+                      name = "Analysis") +
+  scale_fill_manual(values = c("A (excl. residual)" = "#E69F00",
+                                "B (incl. residual)" = "#56B4E9"),
+                    name = "Analysis") +
+  labs(title = "Between-site similarity: Hogup Cave vs. Crescent Springs",
+       caption = "Chord similarity = 1 − SCD/2; 1 = identical assemblages, 0 = no shared composition.\nShown only during Hogup Cave occupational phases (Martin et al. 2017); gaps = inter-phase intervals with no cave data.\nShaded band = 95% Monte Carlo envelope (n = 1000 realizations).") +
+  theme_bw(base_size = 11)
+
+print(fig3)
+```
+
+**Figure 3** shows chord similarity between Hogup Cave and Crescent Springs pollen assemblages, restricted to the four occupational phases defined by Martin et al. (2017). Similarity is expressed as chord similarity (1 − SCD/2), where 1 indicates identical assemblages and 0 indicates no shared compositional signal. Only time periods with cave occupation data are shown; gaps in the lines correspond to inter-phase intervals where no cave pollen is available and a between-site comparison would be uninformative. Values consistently below 0.5 indicate that the cave and wetland were recording fundamentally different vegetation throughout most of the occupation, while any sustained rise toward higher values suggests periods of greater floristic overlap between the upland cave catchment and the wetland basin.
+
 ### Summary tables
 
 ```{r tables}
