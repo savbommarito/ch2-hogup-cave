@@ -464,7 +464,8 @@ fig1_dat$analysis <- factor(fig1_dat$analysis,
 fig1 <- ggplot(fig1_dat, aes(x = age, y = median,
                               colour = analysis, fill = analysis)) +
   # Occupation phase bands (Martin et al. 2017) — drawn first, beneath data
-  annotate("rect", xmin = 6490, xmax = 9790, ymin = -Inf, ymax = Inf, alpha = 0.12, fill = "grey50") +
+  # Phase I xmax capped at 7500 to match axis limit
+  annotate("rect", xmin = 6490, xmax = 7500, ymin = -Inf, ymax = Inf, alpha = 0.12, fill = "grey50") +
   annotate("rect", xmin = 3330, xmax = 5840, ymin = -Inf, ymax = Inf, alpha = 0.06, fill = "grey50") +
   annotate("rect", xmin = 2760, xmax = 2870, ymin = -Inf, ymax = Inf, alpha = 0.12, fill = "grey50") +
   annotate("rect", xmin =  360, xmax = 2610, ymin = -Inf, ymax = Inf, alpha = 0.06, fill = "grey50") +
@@ -526,7 +527,6 @@ fig2 <- ggplot() +
             linewidth = 0.8) +
   scale_x_reverse(name = "Age (cal BP)",
                   breaks = seq(0, 10000, by = 1000)) +
-  scale_y_log10(name = "Squared Chord Distance (log scale)") +
   scale_colour_manual(values = c("Cave (A, excl. residual)" = "#E69F00",
                                  "Cave (B, incl. residual)" = "#56B4E9"),
                       name = "Cave analysis") +
@@ -536,7 +536,8 @@ fig2 <- ggplot() +
   annotate("text", x = max(roc_wet_summary$age_mid), y = max(roc_wet_summary$median),
            label = "Crescent Springs (wetland)", colour = "#009E73",
            hjust = 0, vjust = -0.3, size = 3) +
-  labs(title = "Within-site rate of change",
+  labs(y = "Squared Chord Distance",
+       title = "Within-site rate of change",
        caption = "Shaded band = 95% Monte Carlo envelope (n = 1000 realizations).\nWetland RoC is deterministic (no age uncertainty).") +
   theme_bw(base_size = 11)
 
